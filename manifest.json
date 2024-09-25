@@ -1,0 +1,15 @@
+{
+    "manifest_version": 2,
+    "name": "Simple Homepage",
+    "version": "1.0",
+    "description": "Displays favorites in a grid layout similar to Safari.",
+    "chrome_url_overrides": {
+      "newtab": "newtab.html"
+    },
+    "permissions": ["bookmarks", "storage", "contextMenus"],
+    "icons": {
+      "48": "icons/icon48.png",
+      "96": "icons/icon96.png"
+    }
+  }
+  
