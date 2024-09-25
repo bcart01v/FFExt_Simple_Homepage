@@ -1,3 +1,83 @@
+// IndexedDB helper functions
+const DB_NAME = 'ExtensionData';
+const DB_VERSION = 1;
+const STORE_NAME = 'BackgroundImages';
+
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = function (event) {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+
+    request.onsuccess = function (event) {
+      resolve(event.target.result);
+    };
+
+    request.onerror = function (event) {
+      reject(event.target.error);
+    };
+  });
+}
+
+function getFromDatabase(key) {
+  return openDatabase().then((db) => {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_NAME], 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(key);
+
+      request.onsuccess = function (event) {
+        resolve(event.target.result);
+      };
+
+      request.onerror = function (event) {
+        reject(event.target.error);
+      };
+    });
+  });
+}
+
+function saveToDatabase(key, value) {
+  return openDatabase().then((db) => {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.put(value, key);
+
+      request.onsuccess = function () {
+        resolve();
+      };
+
+      request.onerror = function (event) {
+        reject(event.target.error);
+      };
+    });
+  });
+}
+
+function deleteFromDatabase(key) {
+  return openDatabase().then((db) => {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.delete(key);
+
+      request.onsuccess = function () {
+        resolve();
+      };
+
+      request.onerror = function (event) {
+        reject(event.target.error);
+      };
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const grid = document.getElementById('bookmark-grid');
   const headerTitle = document.getElementById('header-title');
@@ -17,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const editBookmarkOption = document.getElementById('edit-bookmark');
 
   let currentBookmarkId = null;
+  let currentBackgroundUrl = null;
 
   // Function to determine if an image is dark
   function isImageDark(imageDataUrl) {
@@ -61,6 +142,50 @@ document.addEventListener('DOMContentLoaded', () => {
       img.onerror = () => {
         // If there's an error loading the image, assume it's not dark
         resolve(false);
+      };
+    });
+  }
+
+  // Function to get the average color of an image
+  function getAverageColor(imageDataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = imageDataUrl;
+      img.onload = () => {
+        // Create a canvas to draw the image
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+
+        // Draw the image onto the canvas
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, img.width, img.height);
+        const data = imageData.data;
+
+        let r = 0, g = 0, b = 0;
+        const totalPixels = img.width * img.height;
+
+        // Iterate over all pixels and sum their RGB values
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+          // Ignore alpha (data[i + 3])
+        }
+
+        // Calculate average RGB values
+        r = Math.round(r / totalPixels);
+        g = Math.round(g / totalPixels);
+        b = Math.round(b / totalPixels);
+
+        resolve({ r, g, b });
+      };
+
+      img.onerror = (err) => {
+        reject(err);
       };
     });
   }
@@ -267,19 +392,63 @@ document.addEventListener('DOMContentLoaded', () => {
   // Function to apply the background image from storage
   async function applyBackgroundImage() {
     try {
-      const result = await browser.storage.local.get(['backgroundImage', 'isBackgroundImageDark']);
-      if (result.backgroundImage) {
-        document.body.style.backgroundImage = `url(${result.backgroundImage})`;
+      const result = await browser.storage.local.get([
+        'isBackgroundImageDark',
+        'backgroundFit',
+        'averageBackgroundColor',
+      ]);
+      const containerDiv = document.getElementById('container');
+
+      // Retrieve the image Blob from IndexedDB
+      const imageBlob = await getFromDatabase('backgroundImage');
+
+      if (imageBlob) {
+        // Revoke the previous Object URL if any
+        if (currentBackgroundUrl) {
+          URL.revokeObjectURL(currentBackgroundUrl);
+        }
+
+        // Create an Object URL from the Blob
+        currentBackgroundUrl = URL.createObjectURL(imageBlob);
+
+        containerDiv.style.backgroundImage = `url(${currentBackgroundUrl})`;
+
+        // Apply background fit preference
+        switch (result.backgroundFit) {
+          case 'contain':
+            containerDiv.style.backgroundSize = 'contain';
+            break;
+          case 'stretch':
+            containerDiv.style.backgroundSize = '100% 100%';
+            break;
+          default:
+            containerDiv.style.backgroundSize = 'cover';
+        }
+
+        // Apply the average background color
+        if (result.averageBackgroundColor) {
+          containerDiv.style.backgroundColor = result.averageBackgroundColor;
+        } else {
+          containerDiv.style.backgroundColor = ''; // Default background color
+        }
 
         // Adjust font color based on brightness
         if (result.isBackgroundImageDark) {
-          document.body.classList.add('dark-background');
+          containerDiv.classList.add('dark-background');
         } else {
-          document.body.classList.remove('dark-background');
+          containerDiv.classList.remove('dark-background');
         }
       } else {
-        document.body.style.backgroundImage = ''; // Reset to default
-        document.body.classList.remove('dark-background');
+        // Revoke the previous Object URL if any
+        if (currentBackgroundUrl) {
+          URL.revokeObjectURL(currentBackgroundUrl);
+          currentBackgroundUrl = null;
+        }
+
+        // No background image set
+        containerDiv.style.backgroundImage = ''; // Reset to default
+        containerDiv.style.backgroundColor = ''; // Reset to default background color
+        containerDiv.classList.remove('dark-background');
       }
     } catch (error) {
       console.error('Error applying background image:', error);
@@ -322,21 +491,31 @@ document.addEventListener('DOMContentLoaded', () => {
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (file) {
-        const dataUrl = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.readAsDataURL(file);
-        });
-
-        // Analyze image brightness
-        const isDark = await isImageDark(dataUrl);
-
-        // Store the image and brightness in storage
+        // Store the image Blob in IndexedDB
         try {
-          await browser.storage.local.set({
-            backgroundImage: dataUrl,
-            isBackgroundImageDark: isDark,
+          await saveToDatabase('backgroundImage', file);
+
+          // Analyze image brightness
+          const dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(file);
           });
+
+          const isDark = await isImageDark(dataUrl);
+
+          // Get average color
+          const averageColor = await getAverageColor(dataUrl);
+
+          // Convert average color to CSS RGB string
+          const averageColorCss = `rgb(${averageColor.r}, ${averageColor.g}, ${averageColor.b})`;
+
+          // Store additional settings in browser.storage.local
+          await browser.storage.local.set({
+            isBackgroundImageDark: isDark,
+            averageBackgroundColor: averageColorCss,
+          });
+
           // Apply the background image and adjust font color
           applyBackgroundImage();
         } catch (error) {
@@ -352,9 +531,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // Function to reset the background image
   async function resetBackgroundImage() {
     try {
-      await browser.storage.local.remove(['backgroundImage', 'isBackgroundImageDark']);
-      document.body.style.backgroundImage = '';
-      document.body.classList.remove('dark-background');
+      await deleteFromDatabase('backgroundImage');
+      await browser.storage.local.remove([
+        'isBackgroundImageDark',
+        'backgroundFit',
+        'averageBackgroundColor',
+      ]);
+      const containerDiv = document.getElementById('container');
+      containerDiv.style.backgroundImage = '';
+      containerDiv.style.backgroundColor = '';
+      containerDiv.classList.remove('dark-background');
+
+      // Revoke the Object URL if any
+      if (currentBackgroundUrl) {
+        URL.revokeObjectURL(currentBackgroundUrl);
+        currentBackgroundUrl = null;
+      }
     } catch (error) {
       console.error('Error resetting background image:', error);
     }
@@ -391,11 +583,31 @@ document.addEventListener('DOMContentLoaded', () => {
     resetBackgroundImage();
   });
 
-  // Event listener for the "Edit Bookmark" option
-  editBookmarkOption.addEventListener('click', () => {
+  // Event listeners for background fit options
+  document.getElementById('background-fit-cover').addEventListener('click', () => {
     hideContextMenus();
-    openEditBookmarkModal();
+    setBackgroundFit('cover');
   });
+
+  document.getElementById('background-fit-contain').addEventListener('click', () => {
+    hideContextMenus();
+    setBackgroundFit('contain');
+  });
+
+  document.getElementById('background-fit-stretch').addEventListener('click', () => {
+    hideContextMenus();
+    setBackgroundFit('stretch');
+  });
+
+  // Function to set the background fit preference
+  async function setBackgroundFit(fit) {
+    try {
+      await browser.storage.local.set({ backgroundFit: fit });
+      applyBackgroundImage();
+    } catch (error) {
+      console.error('Error setting background fit:', error);
+    }
+  }
 
   // Function to open the edit bookmark modal
   function openEditBookmarkModal() {

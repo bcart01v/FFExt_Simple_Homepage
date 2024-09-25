@@ -1,15 +1,27 @@
 {
-    "manifest_version": 2,
-    "name": "Simple Homepage",
-    "version": "1.0",
-    "description": "Displays favorites in a grid layout similar to Safari.",
-    "chrome_url_overrides": {
-      "newtab": "newtab.html"
-    },
-    "permissions": ["bookmarks", "storage", "contextMenus"],
-    "icons": {
-      "48": "icons/icon48.png",
-      "96": "icons/icon96.png"
+  "manifest_version": 2,
+  "name": "Safari-like New Tab Page",
+  "version": "1.0",
+  "description": "Displays favorites in a grid layout similar to Safari.",
+  "icons": {
+    "128": "icons/SimpleHomepage128.png",
+    "64": "icons/SimpleHomepage64.png",
+    "32": "icons/SimpleHomepage32.png",
+    "16": "icons/SimpleHomepage16.png"
+  },
+  "browser_action": {
+    "default_icon": "icons/SimpleHomepage64.png"
+  },
+  "chrome_url_overrides": {
+    "newtab": "SimpleStart.html"
+  },
+  "chrome_settings_overrides": {
+    "homepage": "SimpleStart.html"
+  },
+  "permissions": ["bookmarks", "storage", "contextMenus", "tabs"],
+  "applications": {
+    "gecko": {
+      "id": "bcart0v@gmail.com"
     }
   }
-  
+}
