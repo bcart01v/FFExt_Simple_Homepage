@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "name": "Safari-like New Tab Page",
+  "name": "SimpleHome",
   "version": "1.0",
   "description": "Displays favorites in a grid layout similar to Safari.",
   "icons": {
