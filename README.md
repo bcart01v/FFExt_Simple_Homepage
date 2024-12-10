@@ -22,6 +22,14 @@ Once installed, you can:
 2. **Edit Favorites**: Click on any favorite to edit the link directly.
 3. **Customize Your Background**: Personalize your homepage and new tabs by uploading your own background image.
 
+## Screenshots
+
+Here is a Preview of SimpleHomepage
+
+ ![Screenshot 1](images/Screenshot%201.png)
+ ![Screenshot 2](images/Screenshot%202.png)
+ ![Screenshot 3](images/Screenshot%203.png)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE.MD) file for details.
